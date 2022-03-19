@@ -3,12 +3,11 @@ package com.main.simpleloginwithjwt.jwt;
 import com.main.simpleloginwithjwt.entity.User;
 import com.main.simpleloginwithjwt.response.LoginResponse;
 import com.main.simpleloginwithjwt.service.UserService;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import org.springframework.beans.factory.annotation.Autowired;
+import io.jsonwebtoken.*;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+
+import javax.servlet.http.HttpServletRequest;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.function.Function;
@@ -17,11 +16,15 @@ import static com.main.simpleloginwithjwt.configuration.ConstantVariableConfigur
 
 @Service
 public class JWTUtils {
-    @Autowired
-    private UserService userService;
+    private final UserService userService;
+
     private final Date loginTime = new Date(System.currentTimeMillis());
 
-    public LoginResponse createToken(HashMap<String, Object> claims, String subject) {
+    public JWTUtils(UserService userService) {
+        this.userService = userService;
+    }
+
+    private LoginResponse createToken(HashMap<String, Object> claims, String subject) {
         String token = Jwts
                 .builder()
                 .setClaims(claims)
@@ -52,30 +55,48 @@ public class JWTUtils {
         return this.createToken(claims, user.getUsername());
     }
 
-    private <T> T extractClaims(String token, Function<Claims, T> claimsTFunction) {
-        final Claims claims = Jwts
-                .parser()
-                .setSigningKey(SECRET_KEY_FOR_GENERATE_TOKEN)
-                .parseClaimsJws(token)
-                .getBody();
+    private <T> T extractClaims(String token, Function<Claims, T> claimsTFunction, HttpServletRequest request) {
+        try {
+            final Claims claims = Jwts
+                    .parser()
+                    .setSigningKey(SECRET_KEY_FOR_GENERATE_TOKEN)
+                    .parseClaimsJws(token)
+                    .getBody();
+            return claimsTFunction.apply(claims);
+        } catch (SignatureException ex) {
+            System.out.println("Invalid JWT Signature");
+            request.setAttribute("invalid", ex.getMessage());
+        } catch (MalformedJwtException ex) {
+            System.out.println("Invalid JWT token");
+            request.setAttribute("invalid", ex.getMessage());
+        } catch (ExpiredJwtException ex) {
+            System.out.println("Expired JWT token");
+            request.setAttribute("expired", ex.getMessage());
+        } catch (UnsupportedJwtException ex) {
+            System.out.println("Unsupported JWT exception");
+            request.setAttribute("invalid", ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            System.out.println("Jwt claims string is empty");
+            request.setAttribute("invalid", ex.getMessage());
+        }
 
-        return claimsTFunction.apply(claims);
+        return null;
     }
 
-    public String extractUsername(String token) {
-        return this.extractClaims(token, Claims::getSubject);
+    String extractUsername(String token, HttpServletRequest request) {
+        return this.extractClaims(token, Claims::getSubject, request);
     }
 
-    public boolean isValidateToken(String token, UserDetails userDetails) {
-        final String username = this.extractUsername(token);
-        return (username.equals(userDetails.getUsername()) && !this.isTokenExpired(token));
+    boolean isValidateToken(String token, UserDetails userDetails, HttpServletRequest request) {
+        final String username = this.extractUsername(token, request);
+        return (username.equals(userDetails.getUsername()) && !this.isTokenExpired(token, request));
     }
 
-    private Date extractExpiration(String token) {
-        return this.extractClaims(token, Claims::getExpiration);
+    private Date extractExpiration(String token, HttpServletRequest request) {
+        return this.extractClaims(token, Claims::getExpiration, request);
     }
 
-    private boolean isTokenExpired(String token) {
-        return this.extractExpiration(token).before(new Date());
+    private boolean isTokenExpired(String token, HttpServletRequest request) {
+        return this.extractExpiration(token, request).before(new Date());
     }
 }
