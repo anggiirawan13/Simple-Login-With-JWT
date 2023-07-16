@@ -31,13 +31,13 @@ public class JWTFilterUserLogin extends OncePerRequestFilter {
 
         if((headerAuth != null && !headerAuth.equals("") && !headerAuth.isEmpty()) && headerAuth.startsWith(TOKEN_PREFIX)) {
             token = headerAuth.substring(7);
-            username = this.jwtUtils.extractUsername(token);
+            username = this.jwtUtils.extractUsername(token, request);
         }
 
         if((username != null && !username.equals("") && !username.isEmpty()) && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.detailUserLoginService.loadUserByUsername(username);
 
-            if(this.jwtUtils.isValidateToken(token, userDetails)) {
+            if(this.jwtUtils.isValidateToken(token, userDetails, request)) {
                 UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 usernamePasswordAuthenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
